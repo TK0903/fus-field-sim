@@ -23,7 +23,6 @@ fus-field-sim/
 │   ├── sim2d.py           2D 計算
 │   └── sim3d.py           3D 計算
 ├── results/             ■ 計算結果（自動生成・設定ごとにフォルダが分かれる）
-├── legacy/                旧スクリプト（参照用。不要なら削除してよい）
 ├── requirements.txt
 └── README.md
 ```
