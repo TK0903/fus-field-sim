@@ -1,0 +1,22 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ---- 計算結果 ----
+# results/ は main.py を実行すれば再生成できるので追跡しない。
+# 特定の結果を記録として残したい場合は、そのフォルダだけ明示的に追加する:
+#   git add -f results/f1.500MHz_coat0um_T22.0C
+results/
+
+# ---- エディタ / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- ツール ----
+.claude/settings.local.json

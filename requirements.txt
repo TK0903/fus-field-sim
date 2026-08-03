@@ -1,0 +1,9 @@
+numpy
+scipy==1.18.0
+matplotlib==3.11.1
+# --- PyTorch (CUDA 12.8 build) ---
+# torchvision の +cu128 に合わせた CUDA ビルド。
+# インストール時は PyTorch のインデックス指定が必要:
+#   pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
