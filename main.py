@@ -106,8 +106,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="球面集束トランスデューサの音場計算 (Rayleigh 積分, GPU)",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", nargs="?", default="both", choices=["2d", "3d", "both"],
-                    help="実行する計算 (既定: both)")
+    ap.add_argument("mode", nargs="?", default="both",
+                    choices=["2d", "3d", "klm", "both", "all"],
+                    help="実行する計算 (既定: both = 2d+3d, all = 2d+3d+klm)")
     ap.add_argument("--freq", type=float, default=None,
                     help="駆動周波数 [MHz] (config.py の FREQ_MHZ を上書き)")
     ap.add_argument("--coating", type=float, default=None,
@@ -146,19 +147,26 @@ def main(argv=None):
             print_header(cfg, device)
             write_config_txt(cfg, device)
 
-            if args.mode in ("2d", "both"):
+            if args.mode in ("2d", "both", "all"):
                 from fus import sim2d
                 print("\n" + "#" * 72)
                 print("#  2D 計算")
                 print("#" * 72)
                 sim2d.run(cfg, device)
 
-            if args.mode in ("3d", "both"):
+            if args.mode in ("3d", "both", "all"):
                 from fus import sim3d
                 print("\n" + "#" * 72)
                 print("#  3D 計算")
                 print("#" * 72)
                 sim3d.run(cfg, device)
+
+            if args.mode in ("klm", "all"):
+                from fus import sim_klm
+                print("\n" + "#" * 72)
+                print("#  KLM 計算 (印加電圧 → 焦点音圧)")
+                print("#" * 72)
+                sim_klm.run(cfg, device)
 
             print("\n" + "=" * 72)
             print(f" 完了。結果は次のフォルダに保存されました:")
