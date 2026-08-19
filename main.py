@@ -5,14 +5,17 @@
 ================================================================================
 
  使い方:
-   python main.py 2d          2D 計算のみ (軸上/横方向/2D断面マップ)
+   python main.py 2d          2D 計算のみ (軸上/横方向プロファイル・2D断面マップ)
    python main.py 3d          3D 計算のみ (焦点体積の等圧面)
-   python main.py both        両方 (既定)
+   python main.py klm         KLM 計算のみ (印加電圧 → 焦点音圧の感度)
+   python main.py both        2D + 3D (既定。引数を省略した場合もこれ)
+   python main.py all         2D + 3D + KLM
 
  条件は config.py で編集する。一時的な上書きは CLI で:
-   python main.py both --freq 3.0            周波数 3.0 MHz
-   python main.py both --coating 50          コーティング 50 µm
-   python main.py 3d --coating 100 --tag v2  結果フォルダ名に接尾辞を付ける
+   python main.py all  --freq 3.0            周波数 3.0 MHz
+   python main.py all  --coating 50          コーティング 50 µm
+   python main.py 3d   --coating 100 --tag v2  結果フォルダ名に接尾辞を付ける
+   python main.py klm  --temp 25             水温 25 ℃
    python main.py both --cpu                 GPU を使わず CPU で計算
 
  結果は  results/<設定がわかる名前>/  に保存される。例:
@@ -20,7 +23,9 @@
      ├─ config.txt        使用した設定一式(再現用)
      ├─ run.log           コンソール出力の全文
      ├─ axial.png / lateral.png / fieldmap.png / results_2d.csv
-     └─ iso3d_*.png / results_3d.csv
+     ├─ iso3d_*.png / results_3d.csv
+     └─ klm_response.png / klm_impedance.png
+        results_klm.csv / klm_sweep.csv
 ================================================================================
 """
 
@@ -33,6 +38,16 @@ import torch
 
 import config as cfgmod
 from fus.plotting import setup_japanese_font
+
+# コンソールの文字コードによらず出力できるようにする。
+# 出力には µm (マイクロ) など非 ASCII が含まれるため、cp932 が既定の環境
+# (cmd.exe など) では UnicodeEncodeError で落ちてしまう。UTF-8 に固定し、
+# それでも表現できない文字は置換して、計算そのものは止めない。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass   # リダイレクト先が reconfigure 非対応でも無視して続行
 
 
 class Tee:
