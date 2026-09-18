@@ -68,6 +68,27 @@ import config as cfgmod
 # ==============================================================================
 #  §1. 素子パラメータの導出
 # ==============================================================================
+def fr_fa_ratio(k):
+    """
+    IEEE の結合係数定義
+        k^2 = (pi/2)·(fr/fa)·tan((pi/2)·(1 - fr/fa))
+    を fr/fa について解く。右辺は fr/fa について単調減少なので二分法で一意。
+
+    厚み振動子では、素直な半波長関係 fa = v_D/(2t) が成り立つのは反共振側。
+    直列共振はこの比のぶんだけ低い側にずれる (kt=0.49 で約 0.892 倍)。
+    """
+    lo, hi = 1e-6, 1.0 - 1e-12
+    for _ in range(200):
+        x = 0.5 * (lo + hi)
+        v = (math.pi / 2) * x * math.tan((math.pi / 2) * (1.0 - x))
+        if v > k * k:
+            lo = x
+        else:
+            hi = x
+    return 0.5 * (lo + hi)
+
+
+
 @dataclass(frozen=True)
 class PZT:
     """KLM 計算に必要な素子パラメータ一式 (SI)"""
@@ -95,7 +116,12 @@ class PZT:
         L.append(f"設計周波数 f_d   : {self.f_design/1e6:.4f} MHz")
         L.append(f"厚み t           : {self.t*1e3:.5f} mm  (= Nt/f_d)")
         L.append(f"電極面積 A       : {self.A*1e6:.4f} mm²  (球冠の曲面積 2πRh)")
-        L.append(f"厚み方向音速 v_D : {self.v_D:.1f} m/s  (= 2*Nt)")
+        L.append(f"Nt の定義基準    : {cfgmod.PZT_NT_BASIS}  "
+                 f"({'Nt = fr·t 直列共振基準' if cfgmod.PZT_NT_BASIS == 'fr' else 'Nt = fa·t 反共振基準'})")
+        L.append(f"厚み方向音速 v_D : {self.v_D:.1f} m/s  "
+                 f"(= 2·Nt/(fr/fa) = 2·{cfgmod.PZT_NT:.0f}/{fr_fa_ratio(self.kt):.5f})"
+                 if cfgmod.PZT_NT_BASIS == "fr" else
+                 f"厚み方向音速 v_D : {self.v_D:.1f} m/s  (= 2·Nt)")
         L.append(f"c33^D            : {self.c33D/1e10:.4f} ×10^10 Pa")
         L.append(f"PZT の ρc        : {self.Zp/1e6:.4f} MRayl")
         L.append(f"水の ρc          : {self.Z_front/1e6:.4f} MRayl  "
@@ -106,7 +132,10 @@ class PZT:
                  f"(換算式: {self.eps_S_mode})")
         L.append(f"h33              : {self.h33/1e9:.4f} ×10^9 V/m")
         L.append(f"クランプ容量 C0  : {self.C0*1e9:.4f} nF")
-        L.append(f"厚み共振(空気中) : {self.f_thick/1e6:.4f} MHz")
+        L.append(f"空気中の反共振   : {self.f_thick/1e6:.4f} MHz  (= v_D/(2t))")
+        L.append(f"空気中の直列共振 : "
+                 f"{self.f_thick*fr_fa_ratio(self.kt)/1e6:.4f} MHz  "
+                 f"(= 反共振 × {fr_fa_ratio(self.kt):.5f})")
         L.append(f"Qm / tanδ        : {self.Qm:.0f} / {self.tan_delta:.4f}")
         return L
 
@@ -127,11 +156,28 @@ def make_pzt(cfg) -> PZT:
     # --- 設計周波数と厚み ---
     f_d = (cfg.freq_hz if cfgmod.PZT_DESIGN_FREQ_MHZ is None
            else cfgmod.PZT_DESIGN_FREQ_MHZ * 1e6)
-    v_D = 2.0 * cfgmod.PZT_NT                      # 厚み方向音速 = 2*Nt
+
+    # 厚み方向音速 v_D を Nt の定義基準に応じて決める。
+    #   厚み振動子で「t = λ/2」という素直な関係 fa = v_D/(2t) が成り立つのは
+    #   【反共振 fa】である。したがって:
+    #     Nt = fa·t  なら  v_D = 2·Nt
+    #     Nt = fr·t  なら  fr = (fr/fa)·v_D/(2t) なので  v_D = 2·Nt/(fr/fa)
+    #   fr/fa は kt から IEEE の定義式で一意に決まる (下の fr_fa_ratio)。
+    #   富士セラミックスは fr 基準 (config.PZT_NT_BASIS の根拠コメント参照)。
+    if cfgmod.PZT_NT_BASIS == "fa":
+        v_D = 2.0 * cfgmod.PZT_NT
+    elif cfgmod.PZT_NT_BASIS == "fr":
+        v_D = 2.0 * cfgmod.PZT_NT / fr_fa_ratio(cfgmod.PZT_KT)
+    else:
+        raise ValueError(f"PZT_NT_BASIS が不正です: {cfgmod.PZT_NT_BASIS!r} "
+                         "('fr' か 'fa')")
+
     if cfgmod.PZT_THICKNESS_MM is not None:
         t = cfgmod.PZT_THICKNESS_MM * 1e-3         # 実測値を最優先
     else:
-        t = v_D / (2.0 * f_d)                      # t = Nt/f_d (反共振が f_d)
+        # Nt = f·t という定義そのものから厚みを出す (基準によらず同じ式)。
+        # 基準が "fr" なら f_d は空気中の直列共振、"fa" なら反共振になる。
+        t = cfgmod.PZT_NT / f_d
         # "series_at_f" なら、水負荷の直列共振が f_d に来るよう t を縮める。
         # fr は概ね 1/t に比例するので t ← t*(fr/f_d) の反復ですぐ収束する。
         if cfgmod.PZT_THICKNESS_MODE == "series_at_f":
